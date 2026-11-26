@@ -6,7 +6,7 @@ behind a separate API later without changing the pages.
 
 Where things live:
     database.py           accounts, survey answers, saved plans, activity and shared links (an Excel workbook)
-    sign_in_providers.py  Continue with Google / Apple
+    sign_in_providers.py  Continue with Google
     sam_ai.py             the AI model (NVIDIA Nemotron) and web search
     services/             the map, places, Wikipedia and other outside services
     assistants/           the four assistants: Volunteer finder, Sports tracker,
@@ -121,7 +121,7 @@ def sign_in(identifier, password):
     user = next((u for u in users if u["provider"] == "Password" and who in (str(u["email"]).lower(), str(u["username"]).lower())), None)
     if not user:
         check_password_hash(_NO_USER_HASH, password)
-        other = next((u for u in users if u["provider"] in ("Google", "Apple") and who == str(u["email"]).lower()), None)
+        other = next((u for u in users if u["provider"] == "Google" and who == str(u["email"]).lower()), None)
         if other:
             return fail(f"This email signs in with {other['provider']}. Use Continue with {other['provider']} above.")
         return fail("That email or username and password don’t match. Try again.")
@@ -132,13 +132,13 @@ def sign_in(identifier, password):
 
 
 def sign_in_with_provider(provider, subject, email, name, demo=False):
-    """BACKEND: the end of Continue with Google / Apple.
+    """BACKEND: the end of Continue with Google.
 
-    Each Google or Apple account is matched by the ID Google or Apple gives it,
+    Each Google account is matched by the ID Google gives it,
     never by email, so nobody can take over an account by signing up with
     someone else's address first.
     """
-    label = {"google": "Google", "apple": "Apple"}[provider] + (" (demo)" if demo else "")
+    label = {"google": "Google"}[provider] + (" (demo)" if demo else "")
     with db.lock:  # Look up and create together, so a double-click can't make two accounts
         existing = next((u for u in _users() if u["provider"] == label and str(u["provider_id"]) == subject), None)
         if existing:

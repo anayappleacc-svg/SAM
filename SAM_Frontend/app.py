@@ -5,7 +5,7 @@ student's choices to these routes, which draw the next page. Data comes from
 api.py.
 
 The order a new student goes through:
-    1. Sign in or create an account (email or username and password, Google, or Apple)
+    1. Sign in or create an account (email or username and password, or Google)
     2. The survey (age, where they live, gender, sports, volunteering), saved to the database
     3. Home, the dashboard, which leads to SAM's four assistants:
          Volunteer finder   /volunteer   real places to volunteer near the student
@@ -101,6 +101,16 @@ NAV = [
         ("survey", "Preferences", "sliders"),
     ]),
 ]
+
+# The AI helpers aren't finished. Pages listed here show an "Under construction"
+# note instead of the tool. Remove a page from this set to switch it back on.
+UNDER_CONSTRUCTION = {"chat", "code"}
+CONSTRUCTION_NOTES = {
+    "chat": ("Concept helper", "book",
+             "SAM will explain ideas and coach you through problems, without handing you the answers."),
+    "code": ("Code translator", "code",
+             "Paste code and SAM will explain what every line does in plain English, or turn it into pseudocode."),
+}
 
 # Chat messages for each student, kept in memory while SAM runs.
 chats = {}
@@ -203,7 +213,24 @@ def pretty_time(hh_mm):
 def page_globals():
     user = session.get("user")
     return {"user": user, "nav": NAV, "survey_done": bool(user and api.load_preferences(user.get("id"))),
-            "today": date.today().isoformat()}
+            "today": date.today().isoformat(), "under_construction": UNDER_CONSTRUCTION}
+
+
+def unless_under_construction(page):
+    """Show the "Under construction" page (or, for the page's script, an error) while `page` is switched off."""
+    def wrap(view):
+        @wraps(view)
+        def guarded(*args, **kwargs):
+            if page not in UNDER_CONSTRUCTION:
+                return view(*args, **kwargs)
+            if wants_json():
+                return jsonify(ok=False, error="This helper is under construction."), 503
+            if request.method != "GET":
+                return redirect(url_for(page))
+            name, icon, text = CONSTRUCTION_NOTES[page]
+            return render_signed_in("construction.html", page, name=name, icon=icon, text=text)
+        return guarded
+    return wrap
 
 
 def wants_json():
@@ -220,7 +247,7 @@ def back_to(default_endpoint):
 
 
 def external_url(endpoint):
-    """The full address of a SAM page, as Google and Apple must see it."""
+    """The full address of a SAM page, as Google must see it."""
     return PUBLIC_URL + url_for(endpoint) if PUBLIC_URL else url_for(endpoint, _external=True)
 
 
@@ -337,21 +364,14 @@ def login():
 @app.post("/login/<provider>")
 @public_page
 def login_provider(provider):
-    """Continue with Google / Apple: send the student to Google or Apple to sign in."""
+    """Continue with Google: send the student to Google to sign in."""
     if provider not in providers.PROVIDERS:
         abort(404)
     if not providers.is_configured(provider):
         return redirect(url_for("demo_sign_in", provider=provider))
     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
-    res = redirect(providers.start_url(provider, external_url(f"{provider}_callback"), state, nonce))
-    if provider == "google":
-        session["oauth"] = {"state": state, "nonce": nonce}
-    else:
-        # Apple posts the student back from appleid.apple.com, and browsers don't send SAM's
-        # normal cookie (SameSite=Lax) with that. So the check rides in its own short cookie.
-        res.set_cookie("sam_apple", signer.dumps({"state": state, "nonce": nonce}), max_age=600,
-                       secure=True, httponly=True, samesite="None", path=url_for("apple_callback"))
-    return res
+    session["oauth"] = {"state": state, "nonce": nonce}
+    return redirect(providers.start_url(provider, external_url(f"{provider}_callback"), state, nonce))
 
 
 @app.get("/login/google/callback")
@@ -368,30 +388,10 @@ def google_callback():
     return finish_sign_in(api.sign_in_with_provider("google", who["sub"], who["email"], who["name"])["user"])
 
 
-@app.post("/login/apple/callback")
-def apple_callback():
-    try:
-        saved = signer.loads(request.cookies.get("sam_apple", ""), max_age=600)
-    except BadSignature:
-        saved = None
-    if request.form.get("error"):  # For example, the student pressed Cancel
-        res = redirect(url_for("login"))
-    elif not saved or not secrets.compare_digest(request.form.get("state", ""), saved["state"]):
-        res = sign_in_problem("That Apple sign-in has expired. Try again.")
-    else:
-        try:
-            who = providers.finish_apple(request.form.get("id_token", ""), request.form.get("user"), saved["nonce"])
-            res = finish_sign_in(api.sign_in_with_provider("apple", who["sub"], who["email"], who["name"])["user"])
-        except providers.SignInError as e:
-            res = sign_in_problem(str(e))
-    res.delete_cookie("sam_apple", path=url_for("apple_callback"), secure=True, httponly=True, samesite="None")
-    return res
-
-
 @app.route("/login/<provider>/demo", methods=["GET", "POST"])
 @public_page
 def demo_sign_in(provider):
-    """Stands in for Google or Apple until their keys are set up (see README)."""
+    """Stands in for Google until its keys are set up (see README)."""
     if provider not in providers.PROVIDERS:
         abort(404)
     if providers.is_configured(provider):
@@ -664,6 +664,7 @@ def run_chat(text):
 @app.route("/chat", methods=["GET", "POST"])
 @signed_in_page
 @survey_first
+@unless_under_construction("chat")
 def chat():
     """The chat page. Without JavaScript, the form posts here and the page reloads with the reply."""
     if request.method == "POST":
@@ -682,6 +683,7 @@ def chat():
 @app.post("/chat/send")
 @signed_in_page
 @survey_first
+@unless_under_construction("chat")
 def chat_send():
     """The same as posting to /chat, for the page's script: answers with the two new messages as HTML."""
     text = (request.form.get("message") or "").strip()[:4000]
@@ -706,6 +708,7 @@ def code_page(result=None, code="", language_id="python", mirror="", problem="",
 @app.route("/code", methods=["GET", "POST"])
 @signed_in_page
 @survey_first
+@unless_under_construction("code")
 def code():
     """The Code translator. Without JavaScript, the form posts here and the page shows the explanation."""
     if request.method == "POST":
@@ -718,6 +721,7 @@ def code():
 @app.post("/code/explain")
 @signed_in_page
 @survey_first
+@unless_under_construction("code")
 def code_explain():
     """The same as posting to /code, for the page's script: answers with the explanation as HTML."""
     result = api.explain_code(session["user"]["id"], request.form.get("code", ""), request.form.get("language", "python"),
@@ -730,6 +734,7 @@ def code_explain():
 @app.post("/code/languages")
 @signed_in_page
 @survey_first
+@unless_under_construction("code")
 def code_language_save():
     words = {key: request.form.get("word_" + key, "") for key, _ in api.code_translator.KEYWORDS}
     if request.form.get("action") == "delete":

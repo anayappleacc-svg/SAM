@@ -16,8 +16,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["SAM_DATA_DIR"] = tempfile.mkdtemp(prefix="sam-tests-")
-for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APPLE_CLIENT_ID", "SAM_PUBLIC_URL"):
-    os.environ.pop(key, None)
+for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SAM_PUBLIC_URL"):
+    os.environ[key] = ""  # Blank, not removed: app.py won't fill a set value in from .env, so the tests stay offline
 
 import sam_ai  # noqa: E402
 from assistants import code_translator, concepts, guardrails  # noqa: E402
@@ -221,6 +221,12 @@ class Pages(unittest.TestCase):
                                          "password": "password123", "consent": "1"})
         self.client.post("/confirm", data={"action": "yes"})
 
+    def switch_on(self):
+        """Test a helper that's under construction as if it were switched on."""
+        patcher = mock.patch.object(self.app, "UNDER_CONSTRUCTION", set())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def survey(self, loc="94040"):
         return self.client.post("/survey", data={"age": "15", "loc": loc, "gender": "female", "playsSports": "yes", "sports": ["Tennis"],
                                                   "vol": ["Animal shelters"], "radius": "5"})
@@ -258,13 +264,23 @@ class Pages(unittest.TestCase):
         self.assertIn("T100000", calendar)  # Morning starts at 10 am
         self.assertEqual(self.client.post("/plan/toggle", data={"item": "made-up"}).status_code, 400)
 
+    def test_ai_helpers_say_under_construction(self):
+        self.survey()
+        for page in ("/chat", "/code"):
+            self.assertIn("Under construction", self.client.get(page).get_data(as_text=True))
+            self.assertEqual(self.client.post(page, data={"message": "hi", "code": "x"}).status_code, 302)
+        self.assertEqual(self.client.post("/chat/send", data={"message": "hi"}, headers={"X-Requested-With": "fetch"}).status_code, 503)
+        self.assertIn("Soon", self.client.get("/home").get_data(as_text=True))
+
     def test_concept_helper_answers_without_reloading(self):
+        self.switch_on()
         self.survey()
         reply = self.client.post("/chat/send", data={"message": "Solve 2x + 6 = 14"}, headers={"X-Requested-With": "fetch"}).get_json()
         self.assertTrue(reply["ok"])
         self.assertIn("SAM is coaching instead of answering", reply["html"])
 
     def test_code_translator_and_languages(self):
+        self.switch_on()
         self.survey()
         reply = self.client.post("/code/explain", data={"code": "print(1)", "language": "python"}, headers={"X-Requested-With": "fetch"}).get_json()
         self.assertIn("Shows `1` on the screen.".replace("`1`", "<code>1</code>"), reply["html"])

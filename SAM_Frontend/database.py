@@ -44,7 +44,7 @@ SHEETS = {
         ("email", "Email", 30),
         ("password_hash", "Password (hashed)", 22),
         ("provider", "Signs in with", 15),
-        ("provider_id", "Google / Apple ID", 22),
+        ("provider_id", "Google ID", 22),
         ("created", "Created", 17),
         ("last_sign_in", "Last sign-in", 17),
         ("age", "Age", 6),

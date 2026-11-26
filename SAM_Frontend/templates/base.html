@@ -58,7 +58,7 @@
     <div class="nav-group">
       {%- if heading %}<p class="nav-heading">{{ heading }}</p>{% endif %}
       {%- for page, label, icon in pages %}
-      <a href="{{ url_for(page) }}"{% if page == active %} aria-current="page"{% endif %}><svg class="i" aria-hidden="true"><use href="#i-{{ icon }}"/></svg><span>{{ label }}</span></a>
+      <a href="{{ url_for(page) }}"{% if page == active %} aria-current="page"{% endif %}><svg class="i" aria-hidden="true"><use href="#i-{{ icon }}"/></svg><span>{{ label }}</span>{% if page in under_construction %}<span class="soon-dot">Soon</span>{% endif %}</a>
       {%- endfor %}
     </div>
     {%- endfor %}

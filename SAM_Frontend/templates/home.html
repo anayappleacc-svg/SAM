@@ -65,8 +65,12 @@
       </form>
     </article>
 
-    <article class="assistant concepts">
+    <article class="assistant concepts{% if 'chat' in under_construction %} is-soon{% endif %}">
       <div class="assistant-head"><span class="assistant-icon" aria-hidden="true"><svg class="i"><use href="#i-book"/></svg></span><h3>Concept helper</h3></div>
+      {%- if 'chat' in under_construction %}
+      <span class="tag soon">Under construction</span>
+      <p class="muted small">SAM will explain ideas and coach you through problems, without handing you the answers. It isn’t ready yet.</p>
+      {%- else %}
       <p class="muted small">Stuck on homework or something in life? SAM explains the idea and coaches you through it, but won’t hand you the answer.</p>
       <form method="post" action="{{ url_for('chat') }}" class="ask-form">
         <label for="dash-ask" class="sr-only">Ask SAM</label>
@@ -78,13 +82,19 @@
         <form method="post" action="{{ url_for('chat') }}"><button class="btn pill" name="prompt" value="{{ x }}">{{ x }}</button></form>
         {%- endfor %}
       </div>
+      {%- endif %}
     </article>
 
-    <article class="assistant code">
+    <article class="assistant code{% if 'code' in under_construction %} is-soon{% endif %}">
       <div class="assistant-head"><span class="assistant-icon" aria-hidden="true"><svg class="i"><use href="#i-code"/></svg></span><h3>Code translator</h3></div>
+      {%- if 'code' in under_construction %}
+      <span class="tag soon">Under construction</span>
+      <p class="muted small">Paste code and see what every line does in plain English, or turn it into pseudocode. It isn’t ready yet.</p>
+      {%- else %}
       <p class="muted small">Paste code and see what every line does in plain English, or turn it into pseudocode. You can even invent your own language.</p>
       <pre class="code-peek" aria-hidden="true"><span>for score in scores:</span><em>Goes through scores one at a time</em></pre>
       <a class="btn primary" href="{{ url_for('code') }}">Open the translator</a>
+      {%- endif %}
     </article>
   </div>
 

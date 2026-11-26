@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ name }}{% endblock %}
+{% block main %}
+<section class="construction" aria-labelledby="construction-title">
+  <span class="assistant-icon" aria-hidden="true"><svg class="i"><use href="#i-{{ icon }}"/></svg></span>
+  <span class="tag soon">Under construction</span>
+  <h1 id="construction-title">The {{ name }} is still being built</h1>
+  <p class="muted">{{ text }} It isn’t ready yet, so check back soon.</p>
+  <p class="muted">In the meantime, these are ready to use:</p>
+  <div class="row">
+    <a class="btn primary" href="{{ url_for('volunteer_page') }}">Volunteer finder</a>
+    <a class="btn" href="{{ url_for('sports_page') }}">Sports tracker</a>
+    <a class="btn" href="{{ url_for('foryou') }}">For you</a>
+  </div>
+</section>
+{% endblock %}

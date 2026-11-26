@@ -5,7 +5,7 @@ SAM's data, sign-in and AI now run inside the Flask app in `SAM_Frontend`:
 | Module | What it does |
 |---|---|
 | [`database.py`](../SAM_Frontend/database.py) | The database: an Excel workbook (`SAM_Frontend/data/sam_database.xlsx`), as the team plan says "for now" |
-| [`sign_in_providers.py`](../SAM_Frontend/sign_in_providers.py) | Continue with Google / Apple (OpenID Connect) |
+| [`sign_in_providers.py`](../SAM_Frontend/sign_in_providers.py) | Continue with Google (OpenID Connect) |
 | [`sam_ai.py`](../SAM_Frontend/sam_ai.py) | The NVIDIA Nemotron model, plus web search (Tavily or Brave) |
 | [`assistants/`](../SAM_Frontend/assistants) | The Volunteer finder, Sports tracker, Concept helper (with its guardrails) and Code translator |
 | [`services/`](../SAM_Frontend/services) | Maps, places, Wikipedia, the cache, and safe rich text |
@@ -22,12 +22,11 @@ All replies are JSON. Failures return an error status with `{ "ok": false, "erro
 | `POST /api/auth/signup` | `{ name, username, email, password }` | `sign_up` | Username: 3 to 20 letters, numbers, dots or underscores. Password: 8+ characters, stored only as a PBKDF2 hash. Returns `{ ok, user: { id, name, username, email, provider } }`. |
 | `POST /api/auth/signin` | `{ identifier, password }` | `sign_in` | `identifier` is an email or username. Same reply as sign-up. |
 | `POST /login/google` → `GET /login/google/callback` | | `sign_in_with_provider` | Google OpenID Connect (authorization code). The ID token's signature, audience, issuer, expiry and nonce are checked. |
-| `POST /login/apple` → `/login/apple/callback` | | `sign_in_with_provider` | Sign in with Apple (form_post). Same checks. Apple sends the student's name only on their first sign-in. |
 | `POST /api/auth/send-confirmation` | | `send_login_confirmation` | Emails a one-time Yes / No link that expires after 10 minutes (e.g. via Amazon SES, SendGrid or Resend). Not built yet: the demo inbox on the confirm page stands in. The sample returns the code as `demoCode`; a real backend must not. |
 | `GET /api/auth/confirm` | `?code=...&answer=yes\|no` | `answer_login_confirmation` | Returns `{ ok, confirmed }`. "No" ends that sign-in. |
 | `POST /api/auth/signout` | | `sign_out` | |
 
-Google and Apple accounts are matched by the ID Google or Apple gives them, never by email, so nobody can take over an account by signing up with someone else's email first.
+Google accounts are matched by the ID Google gives them, never by email, so nobody can take over an account by signing up with someone else's email first.
 
 ## Student data
 
