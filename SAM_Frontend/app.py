@@ -358,7 +358,30 @@ def login():
             return start_confirmation(res["user"], form["remember"])
         error, field = res["error"], res.get("field")
 
-    return render_template("login.html", mode=mode, form=form, error=error, field=field)
+    # Google's "Sign in with Google" button. The nonce ties the token it gives back to this
+    # browser's session, so a token made for someone else's session can't be replayed here.
+    google_button = None
+    if providers.google_button_client_id():
+        session.setdefault("google_button_nonce", secrets.token_urlsafe(24))
+        google_button = {"client_id": providers.google_button_client_id(), "nonce": session["google_button_nonce"],
+                         "action": url_for("google_button_sign_in")}
+    return render_template("login.html", mode=mode, form=form, error=error, field=field, google_button=google_button)
+
+
+@app.post("/login/google/button")
+@public_page
+def google_button_sign_in():
+    """The page posts the ID token from Google's button here; SAM checks it before signing in."""
+    nonce = session.pop("google_button_nonce", None)
+    if not providers.google_button_client_id():
+        abort(404)
+    if not nonce:
+        return sign_in_problem("That Google sign-in has expired. Try again.")
+    try:
+        who = providers.check_google_button(request.form.get("credential", ""), nonce)
+    except providers.SignInError as e:
+        return sign_in_problem(str(e))
+    return finish_sign_in(api.sign_in_with_provider("google", who["sub"], who["email"], who["name"])["user"])
 
 
 @app.post("/login/<provider>")

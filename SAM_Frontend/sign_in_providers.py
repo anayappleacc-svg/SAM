@@ -71,6 +71,17 @@ def finish_google(code, redirect_uri, nonce):
     return _identity("google", tokens.get("id_token", ""), nonce)
 
 
+def google_button_client_id():
+    """The client ID for Google's own "Sign in with Google" button. It needs no client secret."""
+    return _client_id("google")
+
+
+def check_google_button(id_token, nonce):
+    """Check the ID token Google's button gave the page. Never trust it unchecked:
+    the browser could have made it up. Same checks as the redirect sign-in."""
+    return _identity("google", id_token, nonce)
+
+
 def _identity(provider, token, nonce):
     p = PROVIDERS[provider]
     label = p["label"]

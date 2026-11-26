@@ -134,6 +134,8 @@ legend { font-weight: 700; margin-bottom: 10px; padding: 0; }
 .seg a[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(4, 47, 46, .12); }
 .providers { display: grid; gap: 10px; }
 .providers form { display: block; }
+.providers form[hidden], .google-button[hidden] { display: none; }
+.google-button { display: flex; justify-content: center; min-height: 44px; }
 .provider { width: 100%; min-height: 50px; border-radius: 12px; font-size: 16px; font-weight: 600; gap: 12px; }
 .provider svg { width: 20px; height: 20px; flex-shrink: 0; }
 .provider.google { background: var(--google-bg); color: var(--google-ink); border-color: var(--google-line); }

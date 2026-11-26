@@ -80,7 +80,7 @@ Google sign-in is free and works on localhost:
 1. Open [Google Cloud Console](https://console.cloud.google.com/) and create a project.
 2. Go to **APIs & Services → OAuth consent screen**, choose External, and add your team as test users.
 3. Go to **Credentials → Create credentials → OAuth client ID**, and pick **Web application**.
-4. Under **Authorized redirect URIs**, add `http://localhost:5050/login/google/callback`.
+4. Under **Authorized JavaScript origins**, add `http://localhost:5050` and `http://localhost` (for Google's sign-in button). Under **Authorized redirect URIs**, add `http://localhost:5050/login/google/callback` (for the backup button). Running SAM on another port? Add that port too.
 5. Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then restart SAM.
 
 Open SAM at `localhost`, not `127.0.0.1`: Google only accepts the redirect address you registered.

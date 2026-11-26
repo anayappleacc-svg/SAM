@@ -22,6 +22,7 @@ All replies are JSON. Failures return an error status with `{ "ok": false, "erro
 | `POST /api/auth/signup` | `{ name, username, email, password }` | `sign_up` | Username: 3 to 20 letters, numbers, dots or underscores. Password: 8+ characters, stored only as a PBKDF2 hash. Returns `{ ok, user: { id, name, username, email, provider } }`. |
 | `POST /api/auth/signin` | `{ identifier, password }` | `sign_in` | `identifier` is an email or username. Same reply as sign-up. |
 | `POST /login/google` → `GET /login/google/callback` | | `sign_in_with_provider` | Google OpenID Connect (authorization code). The ID token's signature, audience, issuer, expiry and nonce are checked. |
+| `POST /login/google/button` | `credential` (form) | `sign_in_with_provider` | Google's "Sign in with Google" button. The page posts the ID token it gets; the same checks run, with a nonce kept in the student's session. |
 | `POST /api/auth/send-confirmation` | | `send_login_confirmation` | Emails a one-time Yes / No link that expires after 10 minutes (e.g. via Amazon SES, SendGrid or Resend). Not built yet: the demo inbox on the confirm page stands in. The sample returns the code as `demoCode`; a real backend must not. |
 | `GET /api/auth/confirm` | `?code=...&answer=yes\|no` | `answer_login_confirmation` | Returns `{ ok, confirmed }`. "No" ends that sign-in. |
 | `POST /api/auth/signout` | | `sign_out` | |
