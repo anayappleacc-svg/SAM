@@ -48,6 +48,16 @@ Everything works straight away in demo mode. To switch on the real AI, web searc
 
 Maps, places and Wikipedia need no keys. Places and map tiles come from [OpenStreetMap](https://www.openstreetmap.org/copyright), whose volunteers add opening hours and websites, so some places don't have them. SAM asks for at most one place search a second, as OpenStreetMap's rules require, and remembers every answer in `SAM_Frontend/data/cache/`. So a search takes a few seconds the first time and is instant after that, even without internet.
 
+## Put SAM online (Vercel)
+
+1. On [vercel.com](https://vercel.com), sign in with GitHub and choose **Add New → Project**, then import this repository.
+2. Set **Root Directory** to `SAM_Frontend`. Vercel finds the Flask app in `app.py` and installs `requirements.txt`.
+3. Under **Environment Variables**, add `SAM_SECRET_KEY` (a long random string, for example from `python3 -c "import secrets; print(secrets.token_hex(32))"`), and any keys from `.env` you want online. Never commit `.env`.
+4. Click **Deploy**. When it's done, set `SAM_PUBLIC_URL` to the address Vercel gives you (like `https://sam-xyz.vercel.app`) and redeploy.
+5. For Google sign-in, add that address to **Authorized JavaScript origins**, and `<that address>/login/google/callback` to **Authorized redirect URIs**, in Google Cloud.
+
+**Before real students use it:** Vercel only lets SAM write to a temporary folder that's wiped whenever Vercel restarts it, so accounts, survey answers and saved plans don't last. That's fine for showing SAM off. For real use, move the data to a hosted database (for example Postgres from Neon or Supabase, both free to start) by rewriting the functions at the bottom of `database.py`.
+
 ## Test it
 
 ```sh

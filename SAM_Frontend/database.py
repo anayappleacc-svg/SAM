@@ -31,7 +31,11 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
 
-DATA_DIR = Path(os.environ.get("SAM_DATA_DIR") or Path(__file__).resolve().parent / "data")
+# On Vercel (which sets VERCEL=1) only /tmp can be written to, and it's wiped whenever
+# Vercel restarts SAM. So there, accounts last only until the next restart: fine for a
+# demo, but real students need a hosted database first (see README, "Put SAM online").
+_DEFAULT_DATA_DIR = Path("/tmp/sam-data") if os.environ.get("VERCEL") else Path(__file__).resolve().parent / "data"
+DATA_DIR = Path(os.environ.get("SAM_DATA_DIR") or _DEFAULT_DATA_DIR)
 DB_PATH = DATA_DIR / "sam_database.xlsx"
 MAX_TEXT = 2000  # Longest text SAM stores in one cell
 
