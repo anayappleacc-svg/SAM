@@ -290,5 +290,19 @@ class Pages(unittest.TestCase):
         self.assertIn("The same code in Python", page)
 
 
+class FindingPostgres(unittest.TestCase):
+    def test_plain_and_prefixed_names(self):
+        import database
+        find = database._find_postgres_url
+        self.assertEqual(find({}), "")
+        self.assertEqual(find({"DATABASE_URL": "postgres://a"}), "postgres://a")
+        self.assertEqual(find({"POSTGRES_URL": " postgres://b "}), "postgres://b")
+        # Vercel's Neon integration connected with a custom prefix
+        self.assertEqual(find({"SAM_DATA_DATABASE_URL": "postgres://c", "SAM_DATA_PGHOST": "h"}), "postgres://c")
+        self.assertEqual(find({"SAM_DATA_POSTGRES_URL": "postgres://d"}), "postgres://d")
+        # The plain name wins over a prefixed one
+        self.assertEqual(find({"DATABASE_URL": "postgres://a", "X_DATABASE_URL": "postgres://x"}), "postgres://a")
+
+
 if __name__ == "__main__":
     unittest.main()

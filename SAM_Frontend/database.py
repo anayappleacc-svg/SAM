@@ -107,8 +107,24 @@ SHEETS = {
     ],
 }
 
+def _find_postgres_url(env):
+    """The Postgres address from Vercel's Neon or Supabase integration, or "" when there isn't one.
+
+    The integrations set DATABASE_URL (or POSTGRES_URL). When the database was connected with a
+    custom prefix, the names start with it instead, for example SAM_DATA_DATABASE_URL.
+    """
+    for name in ("DATABASE_URL", "POSTGRES_URL"):
+        if (env.get(name) or "").strip():
+            return env[name].strip()
+    for suffix in ("_DATABASE_URL", "_POSTGRES_URL"):
+        for name in sorted(env):
+            if name.endswith(suffix) and (env[name] or "").strip():
+                return env[name].strip()
+    return ""
+
+
 # Postgres, when one is set up. Vercel's Neon and Supabase integrations set these for you.
-POSTGRES_URL = (os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or "").strip()
+POSTGRES_URL = _find_postgres_url(os.environ)
 USING_POSTGRES = bool(POSTGRES_URL)
 
 # Hold `lock` while checking something and then writing, so two requests can't both pass the check.

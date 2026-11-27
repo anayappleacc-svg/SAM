@@ -52,7 +52,7 @@ Maps, places and Wikipedia need no keys. Places and map tiles come from [OpenStr
 
 1. On [vercel.com](https://vercel.com), sign in with GitHub and choose **Add New → Project**, then import this repository.
 2. Set **Root Directory** to `SAM_Frontend`. Vercel finds the Flask app in `app.py` and installs `requirements.txt`.
-3. Give SAM a database: in the project, open **Storage → Create Database**, pick **Neon** (Postgres, free to start) and connect it to the project. Vercel adds `DATABASE_URL` for you, and SAM keeps its data there. Without it, Vercel wipes accounts whenever it restarts SAM.
+3. Give SAM a database: in the project, open **Storage → Create Database**, pick **Neon** (Postgres, free to start) and connect it to the project. Vercel adds `DATABASE_URL` for you (or `<PREFIX>_DATABASE_URL` if you gave the connection a prefix; SAM finds either), and SAM keeps its data there. Without it, Vercel wipes accounts whenever it restarts SAM.
 4. Under **Settings → Environment Variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and any other keys from `.env` you want online. Never commit `.env`.
 5. Redeploy (**Deployments → ⋯ → Redeploy**). Variables only take effect after that.
 6. For Google sign-in, add the Vercel address (like `https://sam-xyz.vercel.app`) to **Authorized JavaScript origins**, and `<that address>/login/google/callback` to **Authorized redirect URIs**, in Google Cloud.
