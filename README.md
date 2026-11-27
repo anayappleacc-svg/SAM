@@ -52,11 +52,12 @@ Maps, places and Wikipedia need no keys. Places and map tiles come from [OpenStr
 
 1. On [vercel.com](https://vercel.com), sign in with GitHub and choose **Add New → Project**, then import this repository.
 2. Set **Root Directory** to `SAM_Frontend`. Vercel finds the Flask app in `app.py` and installs `requirements.txt`.
-3. Under **Environment Variables**, add `SAM_SECRET_KEY` (a long random string, for example from `python3 -c "import secrets; print(secrets.token_hex(32))"`), and any keys from `.env` you want online. Never commit `.env`.
-4. Click **Deploy**. When it's done, set `SAM_PUBLIC_URL` to the address Vercel gives you (like `https://sam-xyz.vercel.app`) and redeploy.
-5. For Google sign-in, add that address to **Authorized JavaScript origins**, and `<that address>/login/google/callback` to **Authorized redirect URIs**, in Google Cloud.
+3. Give SAM a database: in the project, open **Storage → Create Database**, pick **Neon** (Postgres, free to start) and connect it to the project. Vercel adds `DATABASE_URL` for you, and SAM keeps its data there. Without it, Vercel wipes accounts whenever it restarts SAM.
+4. Under **Settings → Environment Variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and any other keys from `.env` you want online. Never commit `.env`.
+5. Redeploy (**Deployments → ⋯ → Redeploy**). Variables only take effect after that.
+6. For Google sign-in, add the Vercel address (like `https://sam-xyz.vercel.app`) to **Authorized JavaScript origins**, and `<that address>/login/google/callback` to **Authorized redirect URIs**, in Google Cloud.
 
-**Before real students use it:** Vercel only lets SAM write to a temporary folder that's wiped whenever Vercel restarts it, so accounts, survey answers and saved plans don't last. That's fine for showing SAM off. For real use, move the data to a hosted database (for example Postgres from Neon or Supabase, both free to start) by rewriting the functions at the bottom of `database.py`.
+SAM works out its https address and keeps its sign-in key in the database by itself on Vercel, so `SAM_PUBLIC_URL` and `SAM_SECRET_KEY` are optional there.
 
 ## Test it
 
@@ -69,7 +70,7 @@ The tests run offline: the map, Wikipedia and the AI model are replaced by stand
 
 ## Where the data is saved
 
-As the team plan says, it's an Excel sheet for now: `SAM_Frontend/data/sam_database.xlsx`, created the first time someone signs up.
+On your own computer it's an Excel sheet, as the team plan says: `SAM_Frontend/data/sam_database.xlsx`, created the first time someone signs up. Online, when `DATABASE_URL` is set, the same sheets are kept in Postgres instead (table `sam_rows`: one row per sheet row, its fields as JSON).
 
 | Sheet | One row per | Columns |
 |---|---|---|
@@ -82,7 +83,7 @@ As the team plan says, it's an Excel sheet for now: `SAM_Frontend/data/sam_datab
 - Passwords are never saved, only a one-way hash (PBKDF2-SHA256, 600,000 rounds), so nobody who opens the file can read them.
 - You can open the file in Excel to look. Don't edit it while SAM is running: SAM rewrites the file each time it saves.
 - `data/` is in `.gitignore`. Student data must never be committed to this repo.
-- Moving to a real database later only means rewriting the functions at the bottom of `database.py`.
+- Both kinds of storage are in `database.py`; the rest of SAM calls only the functions at its bottom.
 
 ## Set up Google sign-in
 

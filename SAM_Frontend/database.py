@@ -17,12 +17,16 @@ You can open the file in Excel to look, but don't edit it while SAM is running:
 SAM rewrites the whole file each time it saves. If you change it while SAM is
 stopped, SAM reads your changes the next time it starts.
 
-Swapping to a real database (SQLite, Postgres) later only means rewriting the
-functions at the bottom of this file. The rest of SAM calls only those.
+Online (for example on Vercel), files don't last: each request can run on a
+fresh server. So when DATABASE_URL (or POSTGRES_URL) is set, the same sheets are
+kept in Postgres instead, one table row per sheet row. The rest of SAM calls only
+the functions at the bottom of this file, so it works the same either way.
 """
 
+import json
 import os
 import re
+import secrets
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -31,9 +35,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
 
-# On Vercel (which sets VERCEL=1) only /tmp can be written to, and it's wiped whenever
-# Vercel restarts SAM. So there, accounts last only until the next restart: fine for a
-# demo, but real students need a hosted database first (see README, "Put SAM online").
+# On Vercel (which sets VERCEL=1) only /tmp can be written to, and it's wiped whenever Vercel
+# restarts SAM. With DATABASE_URL set, student data lives in Postgres and only the map cache
+# goes in /tmp. Without it, accounts there last only until the next restart.
 _DEFAULT_DATA_DIR = Path("/tmp/sam-data") if os.environ.get("VERCEL") else Path(__file__).resolve().parent / "data"
 DATA_DIR = Path(os.environ.get("SAM_DATA_DIR") or _DEFAULT_DATA_DIR)
 DB_PATH = DATA_DIR / "sam_database.xlsx"
@@ -102,6 +106,10 @@ SHEETS = {
         ("spec", "Keywords (JSON)", 60),
     ],
 }
+
+# Postgres, when one is set up. Vercel's Neon and Supabase integrations set these for you.
+POSTGRES_URL = (os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or "").strip()
+USING_POSTGRES = bool(POSTGRES_URL)
 
 # Hold `lock` while checking something and then writing, so two requests can't both pass the check.
 lock = threading.RLock()
@@ -185,9 +193,9 @@ def now():
     return datetime.now().replace(microsecond=0)
 
 
-# ---------- What the rest of SAM calls ----------
+# ---------- The Excel workbook (on your own computer) ----------
 
-def rows(sheet):
+def _xl_rows(sheet):
     """Every row of a sheet, as dicts keyed by the names in SHEETS."""
     with lock:
         ws = _open()[sheet]
@@ -199,7 +207,7 @@ def rows(sheet):
         ]
 
 
-def add_row(sheet, fields):
+def _xl_add_row(sheet, fields):
     with lock:
         wb = _open()
         ws = wb[sheet]
@@ -217,7 +225,7 @@ def _matching_rows(ws, cols, sheet, where):
             if all(str(ws.cell(row=r, column=col).value or "") == value for col, value in wanted)]
 
 
-def update_rows(sheet, where, fields):
+def _xl_update_rows(sheet, where, fields):
     """Change every row that matches `where`. Returns how many rows changed."""
     with lock:
         wb = _open()
@@ -232,12 +240,7 @@ def update_rows(sheet, where, fields):
         return len(found)
 
 
-def update_row(sheet, key, match, fields):
-    """Change the rows whose `key` column equals `match`. Returns False if none does."""
-    return update_rows(sheet, {key: match}, fields) > 0
-
-
-def delete_rows(sheet, where):
+def _xl_delete_rows(sheet, where):
     """Remove every row that matches `where`. Returns how many rows were removed."""
     with lock:
         wb = _open()
@@ -250,9 +253,155 @@ def delete_rows(sheet, where):
         return len(found)
 
 
+# ---------- Postgres (online) ----------
+# One table holds every sheet: each row is (sheet name, the row's fields as JSON).
+# Dates are stored as {"$dt": "2026-11-27T14:05:00"} and come back as datetimes, as from Excel.
+
+_pg_ready = False
+
+
+def _pg():
+    """A new connection. Serverless functions shouldn't hold one open between requests."""
+    import psycopg  # Only needed online, so SAM still runs on a laptop without it
+    return psycopg.connect(POSTGRES_URL, autocommit=True, connect_timeout=10, prepare_threshold=None)
+
+
+def _pg_set_up():
+    global _pg_ready
+    if _pg_ready:
+        return
+    with _pg() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS sam_rows (
+            id BIGSERIAL PRIMARY KEY,
+            sheet TEXT NOT NULL,
+            data JSONB NOT NULL)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS sam_rows_sheet ON sam_rows (sheet, id)")
+        conn.execute("CREATE TABLE IF NOT EXISTS sam_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    _pg_ready = True
+
+
+def _clean(value):
+    """The same rules as an Excel cell: no control characters, trimmed, at most MAX_TEXT long."""
+    if isinstance(value, str):
+        value = ILLEGAL_CHARACTERS_RE.sub("", value).strip()[:MAX_TEXT]
+        return value or None
+    if isinstance(value, datetime):
+        return {"$dt": value.isoformat()}
+    return value
+
+
+def _unclean(value):
+    if isinstance(value, dict) and "$dt" in value:
+        return datetime.fromisoformat(value["$dt"])
+    return "" if value is None else value
+
+
+def _check_keys(sheet, keys):
+    known = {k for k, _, _ in SHEETS[sheet]}
+    for key in keys:
+        if key not in known:
+            raise KeyError(f"{sheet} has no column {key!r}")
+
+
+def _where_sql(sheet, where):
+    """WHERE text and values matching every value in `where`, compared as text like the Excel version."""
+    _check_keys(sheet, where)
+    sql, args = "sheet = %s", [sheet]
+    for key, value in where.items():
+        sql += " AND COALESCE(data->>%s, '') = %s"
+        args += [key, str(value)]
+    return sql, args
+
+
+def _pg_rows(sheet):
+    _pg_set_up()
+    with _pg() as conn:
+        found = conn.execute("SELECT data FROM sam_rows WHERE sheet = %s ORDER BY id", [sheet]).fetchall()
+    return [{key: _unclean(data.get(key)) for key, _, _ in SHEETS[sheet]} for (data,) in found]
+
+
+def _pg_add_row(sheet, fields, conn=None):
+    _check_keys(sheet, fields)
+    data = json.dumps({key: _clean(value) for key, value in fields.items()})
+    if conn is not None:
+        conn.execute("INSERT INTO sam_rows (sheet, data) VALUES (%s, %s::jsonb)", [sheet, data])
+        return
+    _pg_set_up()
+    with _pg() as c:
+        c.execute("INSERT INTO sam_rows (sheet, data) VALUES (%s, %s::jsonb)", [sheet, data])
+
+
+def _pg_update_rows(sheet, where, fields):
+    _check_keys(sheet, fields)
+    _pg_set_up()
+    sql, args = _where_sql(sheet, where)
+    patch = json.dumps({key: _clean(value) for key, value in fields.items()})
+    with _pg() as conn:
+        return conn.execute(f"UPDATE sam_rows SET data = data || %s::jsonb WHERE {sql}", [patch, *args]).rowcount
+
+
+def _pg_delete_rows(sheet, where):
+    _pg_set_up()
+    sql, args = _where_sql(sheet, where)
+    with _pg() as conn:
+        return conn.execute(f"DELETE FROM sam_rows WHERE {sql}", args).rowcount
+
+
+def _pg_add_user(fields):
+    """Pick the next user ID and add the row in one transaction. The lock stops two
+    servers handing out the same ID at the same moment."""
+    _pg_set_up()
+    with _pg() as conn:
+        with conn.transaction():
+            conn.execute("SELECT pg_advisory_xact_lock(4515001)")
+            found = conn.execute(
+                "SELECT data->>'user_id' FROM sam_rows WHERE sheet = 'Users'").fetchall()
+            numbers = [int(m.group(1)) for (uid,) in found if (m := re.fullmatch(r"U(\d+)", uid or ""))]
+            user_id = f"U{max(numbers, default=0) + 1:04d}"
+            _pg_add_row("Users", {**fields, "user_id": user_id, "created": now()}, conn=conn)
+    return user_id
+
+
+def shared_secret(name="session_key"):
+    """A random secret every server shares, made the first time it's asked for. Online only."""
+    _pg_set_up()
+    with _pg() as conn:
+        conn.execute("INSERT INTO sam_settings (name, value) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
+                     [name, secrets.token_hex(32)])
+        return conn.execute("SELECT value FROM sam_settings WHERE name = %s", [name]).fetchone()[0]
+
+
+# ---------- What the rest of SAM calls ----------
+
+def rows(sheet):
+    """Every row of a sheet, as dicts keyed by the names in SHEETS."""
+    return _pg_rows(sheet) if USING_POSTGRES else _xl_rows(sheet)
+
+
+def add_row(sheet, fields):
+    return _pg_add_row(sheet, fields) if USING_POSTGRES else _xl_add_row(sheet, fields)
+
+
+def update_rows(sheet, where, fields):
+    """Change every row that matches `where`. Returns how many rows changed."""
+    return _pg_update_rows(sheet, where, fields) if USING_POSTGRES else _xl_update_rows(sheet, where, fields)
+
+
+def update_row(sheet, key, match, fields):
+    """Change the rows whose `key` column equals `match`. Returns False if none does."""
+    return update_rows(sheet, {key: match}, fields) > 0
+
+
+def delete_rows(sheet, where):
+    """Remove every row that matches `where`. Returns how many rows were removed."""
+    return _pg_delete_rows(sheet, where) if USING_POSTGRES else _xl_delete_rows(sheet, where)
+
+
 def add_user(fields):
     """Add a student and return their new user ID (U0001, U0002, ...)."""
     with lock:
+        if USING_POSTGRES:
+            return _pg_add_user(fields)
         numbers = [int(m.group(1)) for u in rows("Users") if (m := re.fullmatch(r"U(\d+)", str(u["user_id"])))]
         user_id = f"U{max(numbers, default=0) + 1:04d}"
         add_row("Users", {**fields, "user_id": user_id, "created": now()})

@@ -64,6 +64,10 @@ def secret_key():
     """Signs the session cookie. Kept in data/ so restarting SAM doesn't sign everyone out."""
     if os.environ.get("SAM_SECRET_KEY"):
         return os.environ["SAM_SECRET_KEY"]
+    if database.USING_POSTGRES:
+        # Online, many servers answer requests. They must all use the same key, or a student
+        # signed in on one would look signed out on the next. So it's kept in the database.
+        return database.shared_secret()
     key_file = database.DATA_DIR / ".secret_key"
     if not key_file.exists():
         database.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -73,12 +77,17 @@ def secret_key():
 
 
 PUBLIC_URL = os.environ.get("SAM_PUBLIC_URL", "").strip().rstrip("/")
+ON_VERCEL = bool(os.environ.get("VERCEL"))
 
 app = Flask(__name__)
+if ON_VERCEL:
+    # Vercel answers on https and passes requests on; this lets SAM see the real https address.
+    from werkzeug.middleware.proxy_fix import ProxyFix  # Installed with Flask
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=PUBLIC_URL.startswith("https://"),
+    SESSION_COOKIE_SECURE=ON_VERCEL or PUBLIC_URL.startswith("https://"),
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 app.secret_key = secret_key()
